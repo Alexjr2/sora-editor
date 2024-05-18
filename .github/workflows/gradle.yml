@@ -10,49 +10,54 @@ on:
       - '!.github/workflows/**'
   pull_request:
   workflow_dispatch:
+   inputs:
+     VERSION:
+      description: 'VERSION'
 
 jobs:
-  build:
-    name: Build debug APK
+  build_CI:
+    name: Build Release APK
     runs-on: ubuntu-latest
     steps:
-      - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.12.1
-        with:
-          access_token: ${{ github.token }}
-
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@main
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@main
         with:
           java-version: 17
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@main
 
       - name: Grant Permissions for Gradle
         run: chmod +x gradlew
 
-      - name: Build debug APK
+      - name: Build Release APK
         id: build
-        run: ./gradlew assembleDebug
-
-      - name: Publish snapshot
-        if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.build.outcome == 'success' }}
-        run: ./gradlew publishAllPublicationsToMavenCentral
-        env:
-          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MVN_USERNAME }}
-          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MVN_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MVN_SIGNING_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MVN_SIGNING_KEY_ID }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MVN_SIGNING_KEY_PASSWORD }}
-
+        run: ./gradlew assembleRelease --parallel
+      
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@main
         if: ${{ !github.head_ref }}
         with:
-          name: apk-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: sora-editor.apk
+          path: app/build/outputs/apk/release/*.apk
+  create_release:
+    needs: build_CI
+    runs-on: ubuntu-latest
+    steps:
+     - name: download artifact
+       uses: actions/download-artifact@main
+       with:
+          path: release
+          merge-multiple: true
+     - name: display release-assets
+       run: tree ${{ github.workspace }}/release
+     - name: Upload release build
+       uses: softprops/action-gh-release@master
+       with:
+        tag_name: "${{ github.event.inputs.VERSION }}"
+        fail_on_unmatched_files: true
+        files: release/*
